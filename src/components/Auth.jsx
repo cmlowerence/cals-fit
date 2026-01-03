@@ -1,28 +1,43 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Lock, Mail, Loader2, UserPlus, LogIn, AlertCircle } from 'lucide-react';
+import { Lock, Mail, Loader2, UserPlus, LogIn, AlertCircle, CheckCircle, ArrowRight } from 'lucide-react';
 
 export default function Auth({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false); // New state for email sent screen
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
-  const [msg, setMsg] = useState(null);
 
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setMsg(null);
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password });
+        // 1. SIGN UP LOGIC
+        const { data, error } = await supabase.auth.signUp({ 
+            email, 
+            password,
+            options: {
+                // This ensures they are redirected back to your app after clicking the link
+                emailRedirectTo: window.location.origin 
+            }
+        });
+        
         if (error) throw error;
-        setMsg("Account created! Please check your email to verify, then log in.");
-        setIsSignUp(false); // Switch to login mode
+        
+        // If signup is successful and requires email verification
+        if (data.user && !data.session) {
+            setNeedsVerification(true);
+        } else if (data.session) {
+            onLogin(); // Auto-login if email confirmation is disabled in Supabase settings
+        }
+
       } else {
+        // 2. LOGIN LOGIC
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         onLogin(); // Success
@@ -34,6 +49,35 @@ export default function Auth({ onLogin }) {
     }
   };
 
+  // --- SCREEN: CHECK YOUR EMAIL ---
+  if (needsVerification) {
+      return (
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center p-6">
+            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-sm border border-gray-700 shadow-2xl text-center">
+                <div className="w-16 h-16 bg-blue-900/50 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Mail className="text-blue-400" size={32} />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-4">Check your Inbox</h2>
+                <p className="text-gray-400 mb-6 leading-relaxed">
+                    We have sent a confirmation link to <span className="text-white font-bold">{email}</span>.
+                </p>
+                <div className="bg-blue-900/20 p-4 rounded-xl border border-blue-800/50 mb-8">
+                    <p className="text-sm text-blue-200">
+                        Please click the link in that email to activate your account. You can close this tab now.
+                    </p>
+                </div>
+                <button 
+                    onClick={() => { setNeedsVerification(false); setIsSignUp(false); }}
+                    className="text-gray-400 hover:text-white text-sm flex items-center justify-center gap-2"
+                >
+                    <ArrowRight size={16} className="rotate-180"/> Back to Login
+                </button>
+            </div>
+        </div>
+      )
+  }
+
+  // --- SCREEN: LOGIN / SIGNUP FORM ---
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center p-6">
       <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-sm border border-gray-700 shadow-2xl">
@@ -45,12 +89,6 @@ export default function Auth({ onLogin }) {
         {error && (
           <div className="bg-red-900/30 border border-red-800 p-3 rounded-lg mb-4 flex items-center gap-2 text-red-200 text-sm">
             <AlertCircle size={16} /> {error}
-          </div>
-        )}
-
-        {msg && (
-          <div className="bg-green-900/30 border border-green-800 p-3 rounded-lg mb-4 text-green-200 text-sm text-center">
-            {msg}
           </div>
         )}
 
